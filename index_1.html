@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>พูดตอบคำถาม - ChemQuest</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Sarabun', 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    h2 { color: #fff; font-size: 18px; margin-bottom: 24px; }
+    .mic-btn {
+      width: 110px; height: 110px; border-radius: 50%;
+      background: #ef4444; color: #fff; border: none;
+      font-size: 40px; cursor: pointer; margin-bottom: 20px;
+      box-shadow: 0 4px 14px rgba(239,68,68,0.4);
+    }
+    .mic-btn.listening { background: #dc2626; animation: pulse 1.2s infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+      70% { box-shadow: 0 0 0 22px rgba(220,38,38,0); }
+      100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+    }
+    .hint { color: #e0e7ff; font-size: 14px; margin-bottom: 20px; }
+    .transcript-box {
+      background: #fff; border-radius: 12px; padding: 16px;
+      min-height: 60px; width: 100%; max-width: 320px;
+      font-size: 15px; color: #374151; margin-bottom: 16px;
+    }
+    button.action {
+      padding: 12px 24px; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: bold; cursor: pointer; margin: 6px;
+    }
+    .btn-confirm { background: #10b981; color: #fff; }
+    .btn-retry { background: #f3f4f6; color: #374151; }
+    .footer-note { color: #c7d2fe; font-size: 11px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+
+  <h2>🎤 แตะไมค์แล้วพูดคำตอบ</h2>
+
+  <button class="mic-btn" id="mic-button">🎤</button>
+  <div class="hint" id="hint-text">แตะไมค์เพื่อเริ่มพูด</div>
+
+  <div class="transcript-box" id="transcript-box">คำตอบจะปรากฏที่นี่...</div>
+
+  <div id="action-buttons" style="display:none;">
+    <button class="action btn-confirm" id="confirm-btn">✅ ใช้คำตอบนี้</button>
+    <button class="action btn-retry" id="retry-btn">🔄 พูดใหม่</button>
+  </div>
+
+  <div class="footer-note">ChemQuest Voice Bridge</div>
+
+<script>
+  let recognition = null;
+  let isListening = false;
+  let finalTranscript = '';
+
+  const micButton = document.getElementById('mic-button');
+  const hintText = document.getElementById('hint-text');
+  const transcriptBox = document.getElementById('transcript-box');
+  const actionButtons = document.getElementById('action-buttons');
+  const confirmBtn = document.getElementById('confirm-btn');
+  const retryBtn = document.getElementById('retry-btn');
+
+  function setupRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      hintText.textContent = 'เบราว์เซอร์นี้ไม่รองรับการพูด กรุณาใช้ Google Chrome';
+      return null;
+    }
+    const rec = new SpeechRecognition();
+    rec.lang = 'th-TH';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = function(event) {
+      finalTranscript = event.results[0][0].transcript;
+      transcriptBox.textContent = finalTranscript;
+      actionButtons.style.display = 'block';
+    };
+
+    rec.onerror = function(event) {
+      setListeningUI(false);
+      hintText.textContent = 'ไม่ได้ยินเสียง (' + event.error + ') ลองแตะไมค์อีกครั้ง';
+    };
+
+    rec.onend = function() {
+      setListeningUI(false);
+    };
+
+    return rec;
+  }
+
+  function setListeningUI(listening) {
+    isListening = listening;
+    if (listening) {
+      micButton.classList.add('listening');
+      hintText.textContent = 'กำลังฟัง... พูดได้เลย';
+    } else {
+      micButton.classList.remove('listening');
+      if (!finalTranscript) {
+        hintText.textContent = 'แตะไมค์เพื่อเริ่มพูด';
+      }
+    }
+  }
+
+  micButton.addEventListener('click', function() {
+    if (isListening) {
+      recognition && recognition.stop();
+      return;
+    }
+    finalTranscript = '';
+    actionButtons.style.display = 'none';
+    transcriptBox.textContent = 'คำตอบจะปรากฏที่นี่...';
+    recognition = setupRecognition();
+    if (!recognition) return;
+    setListeningUI(true);
+    recognition.start();
+  });
+
+  retryBtn.addEventListener('click', function() {
+    finalTranscript = '';
+    actionButtons.style.display = 'none';
+    transcriptBox.textContent = 'คำตอบจะปรากฏที่นี่...';
+    hintText.textContent = 'แตะไมค์เพื่อเริ่มพูด';
+  });
+
+  confirmBtn.addEventListener('click', function() {
+    // ส่งผลลัพธ์กลับไปยังหน้าต่างหลัก (ChemQuest บน Apps Script) ผ่าน postMessage
+    // ใช้ '*' เพราะ origin ของ Apps Script เปลี่ยนได้หลายรูปแบบ (script.google.com, googleusercontent.com)
+    if (window.opener) {
+      window.opener.postMessage({ type: 'SPEECH_RESULT', transcript: finalTranscript }, '*');
+    }
+    window.close();
+  });
+</script>
+</body>
+</html>
